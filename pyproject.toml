@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dukafetch"
+version = "0.1.0"
+description = "Polite, resumable Dukascopy tick and 1-minute downloader with verified decoding, and a bar-vs-tick bracket checker"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "pandas>=2.0", "requests>=2.28"]
+keywords = ["dukascopy", "tick data", "forex", "gold", "backtesting", "market data"]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+
+[project.scripts]
+dukafetch = "dukafetch.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
