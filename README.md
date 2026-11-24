@@ -4,9 +4,10 @@
 ![python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-Dukascopy publishes years of **free tick and 1-minute bid/ask data** for FX, metals, indices and crypto. Getting it is easy; getting it *right* is not. `dukafetch` downloads it politely and resumably, decodes it with verified formats, and protects you from three silent errors I hit in practice:
+Dukascopy publishes years of **free tick and 1-minute bid/ask data** for FX, metals, indices and crypto. Getting it is easy; getting it *right* is not. `dukafetch` downloads it politely and resumably, decodes it with verified formats, and protects you from four silent errors I hit in practice:
 - **padding candles** (fake flat bars);
 - **wrong price divisors**;
+- **files on the wrong clock**;
 - **bar backtests that invent edge**.
 
 ## The headline: a backtest can turn a losing strategy into a winning one
@@ -27,11 +28,21 @@ With tight brackets, an "optimistic" bar backtest reports a **profitable** strat
 
 I learned this the expensive way: a scalping strategy whose bar-backtest edge was entirely this artefact. The synthetic experiment above reproduces the effect with no proprietary data: `python examples/bar_vs_tick.py`.
 
-## The two data traps
+## Three data traps
 
 **1. Padding candles.** Dukascopy's daily 1-minute files contain a record for *every* minute, including hours when the market is closed. Those minutes are flat, zero-volume copies of the last price. In one real SMI index file I checked, **604 of 1,440 candles were padding**. Left in, they deflate volatility, inflate the number of "quiet" bars and corrupt session statistics. `decode_candles` drops them by default.
 
 **2. Price divisors.** Prices are stored as integers. XAUUSD and USDJPY divide by 1,000, EURUSD by 100,000 and BTCUSD by 10. A wrong divisor gives prices off by 10–1,000×. That survives any return-based check and breaks every cost, stop and level. `sanity_check(prices, expected=...)` fails loudly instead.
+
+**3. The wrong clock.** Vendor files are often stamped in "server time", not UTC. Documentation is sometimes wrong too: one of my own data files turned out to be on New York + 7 h when it was labelled UTC. Every session filter, news filter and time-of-day result built on it would have been shifted. `detect_clock_offset` lets the market tell you the clock. It aligns the volatility burst that follows scheduled releases (US payrolls, 08:30 New York, via `nfp_times_utc`) at every candidate offset and picks the one where the bursts line up.
+
+![clock offset](docs/clock_offset.png)
+
+```python
+from dukafetch import detect_clock_offset, nfp_times_utc
+best, table = detect_clock_offset(m1_close, nfp_times_utc("2022-01-01", "2024-12-31"))   # best = +7 -> file time = UTC + 7 h
+```
+The detector assumes a fixed offset. For a server clock that follows DST (e.g. UTC+2 winter / UTC+3 summer), run it separately on summer and winter months. Synthetic demo: `python examples/clock_check.py`.
 
 The record formats were verified against real files: BTCUSD ticks near $106.8k on 2025-07-01, and SMI candles near 8,370 in January 2019. Note the candle field order: **open, close, low, high**, not OHLC.
 
@@ -74,13 +85,14 @@ print(resolve_on_ticks(ticks, t, +1, entry, entry - 0.5, entry + 0.5))          
 python -m unittest discover -s tests -v
 ```
 
-The 10 tests cover:
+The 13 tests cover:
 - a tick and candle round-trip through the binary formats;
 - dropping padding candles;
 - the divisor guard;
 - the URL's zero-based month;
 - resume, 404 and throttle handling;
-- bracket resolution on bars vs ticks, for long and short trades.
+- bracket resolution on bars vs ticks, for long and short trades;
+- payroll release times across DST, and clock-offset detection on UTC, UTC+2, UTC+7 and tz-aware files.
 
 ## Notes
 
